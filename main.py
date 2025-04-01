@@ -6,12 +6,34 @@ import numpy as np
 # Add at the top after imports
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Armenian:wght@400;700&display=swap');
-html, body, [class*="css"] {
-    font-family: 'Noto Sans Armenian', sans-serif;
-}
+    /* Remove cursor from selectbox */
+    div[data-baseweb="select"] > div:first-child {
+        caret-color: transparent !important;
+    }
+    
+    /* Keep original font settings */
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Armenian:wght@400;700&display=swap');
+    html, body, [class*="css"] {
+        font-family: 'Noto Sans Armenian', sans-serif;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+def validate_image(uploaded_file):
+    """Validate uploaded file is a real image"""
+    if uploaded_file is None:
+        return None
+    if uploaded_file.type not in ["image/png", "image/jpeg", "image/jpg"]:
+        return None
+    return uploaded_file
+
+def model_prediction(test_image):
+    model = tf.keras.models.load_model('trained_model.keras')
+    image = tf.keras.preprocessing.image.load_img(test_image, target_size=(128,128))
+    input_arr = tf.keras.preprocessing.image.img_to_array(image)
+    input_arr = np.array([input_arr])
+    prediction = model.predict(input_arr)
+    return np.argmax(prediction)
 
 # ==============================
 # LANGUAGE CONFIGURATION
@@ -172,7 +194,8 @@ This dataset contains plant disease images with three main folders:
 # ==============================
 if 'lang' not in st.session_state:
     st.session_state.lang = 'en'
-
+if 'uploaded_image' not in st.session_state:  # Add this line
+    st.session_state.uploaded_image = None
 # Load current language
 lang = LANGUAGES[st.session_state.lang]
 
@@ -201,6 +224,9 @@ app_mode = st.sidebar.selectbox(lang['page_select'], lang['pages'])
 # ==============================
 # PAGE CONTENT
 # ==============================
+# ==============================
+# PAGE CONTENT
+# ==============================
 if app_mode == lang['pages'][0]:  # Home
     st.header(lang['home_title'])
     st.image('home_page.jpeg', use_column_width=True)
@@ -210,22 +236,76 @@ elif app_mode == lang['pages'][1]:  # About
     st.header(lang['about_title'])
     st.markdown(lang['about_content'])
 
+# ==============================
+# PREDICTION PAGE (FIXED INDENTATION)
+# ==============================
+# ==============================
+# MODIFIED PREDICTION SECTION
+# ==============================
 elif app_mode == lang['pages'][2]:  # Prediction
     st.header(lang['prediction_title'])
-    test_image = st.file_uploader(lang['file_uploader'])
     
+    # Initialize session state variables
+    if 'show_image' not in st.session_state:
+        st.session_state.show_image = False
+    if 'prediction_result' not in st.session_state:
+        st.session_state.prediction_result = None
+    if 'uploaded_image' not in st.session_state:
+        st.session_state.uploaded_image = None
+
+    # File uploader with validation
+    test_image = st.file_uploader(lang['file_uploader'], type=["png", "jpg", "jpeg"])
+    
+    # Handle new file upload
+    if test_image is not None:
+        validated_image = validate_image(test_image)
+        if validated_image is None:
+            st.error("Invalid file type! Please upload a valid image file (PNG, JPG, JPEG).")
+            # Reset states on invalid upload
+            st.session_state.uploaded_image = None
+            st.session_state.show_image = False
+            st.session_state.prediction_result = None
+        else:
+            # Only reset if it's a new valid image
+            if st.session_state.uploaded_image != validated_image:
+                st.session_state.uploaded_image = validated_image
+                st.session_state.show_image = False
+                st.session_state.prediction_result = None
+
+    # Create permanent columns layout
     col1, col2 = st.columns(2)
-    with col1:
-        if st.button(lang['show_image_btn']):
-            if test_image:
-                st.image(test_image, use_column_width=True)
-            else:
-                st.warning(lang['upload_warning'])
     
+    # Left column: Image display
+    with col1:
+        # Show image button
+        if st.button(lang['show_image_btn'], 
+                    disabled=st.session_state.uploaded_image is None,
+                    help="Display the uploaded image"):
+            st.session_state.show_image = True
+        
+        # Persistent image display
+        if st.session_state.show_image and st.session_state.uploaded_image:
+            st.image(st.session_state.uploaded_image, use_column_width=True)
+        elif st.session_state.uploaded_image and st.session_state.show_image:
+            st.warning("Image failed to load")
+
+    # Right column: Prediction
     with col2:
-        if st.button(lang['predict_btn']):
-            if test_image:
-                result_index = model_prediction(test_image)
-                st.success(f"{lang['prediction_result'].format(lang['class_names'][result_index])}")
-            else:
-                st.warning(lang['upload_warning'])
+        # Predict button
+        if st.button(lang['predict_btn'], 
+                    disabled=st.session_state.uploaded_image is None,
+                    help="Analyze the uploaded image"):
+            result_index = model_prediction(st.session_state.uploaded_image)
+            st.session_state.prediction_result = lang['class_names'][result_index]
+        
+        # Persistent prediction display
+        if st.session_state.prediction_result:
+            st.success(f"{lang['prediction_result'].format(st.session_state.prediction_result)}")
+            st.session_state.show_image = True  # Ensure image stays visible
+        elif st.session_state.uploaded_image and not st.session_state.prediction_result:
+            st.info("Click 'Predict' to analyze the image")
+
+    # Force show image if prediction exists
+    if st.session_state.prediction_result and not st.session_state.show_image:
+        st.session_state.show_image = True
+        st.experimental_rerun()
