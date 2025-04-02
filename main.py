@@ -229,7 +229,7 @@ app_mode = st.sidebar.selectbox(lang['page_select'], lang['pages'])
 # ==============================
 if app_mode == lang['pages'][0]:  # Home
     st.header(lang['home_title'])
-    st.image('home_page.jpeg', use_column_width=True)
+    st.image('home_page.jpeg', use_container_width=True)
     st.markdown(lang['home_content'])
 
 elif app_mode == lang['pages'][1]:  # About
