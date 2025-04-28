@@ -2,7 +2,6 @@ import streamlit as st
 import tensorflow as tf
 import numpy as np
 
-
 # Add at the top after imports
 st.markdown("""
 <style>
@@ -28,12 +27,13 @@ def validate_image(uploaded_file):
     return uploaded_file
 
 def model_prediction(test_image):
+    """Returns both predicted class index and confidence score"""
     model = tf.keras.models.load_model('trained_model.keras')
     image = tf.keras.preprocessing.image.load_img(test_image, target_size=(128,128))
     input_arr = tf.keras.preprocessing.image.img_to_array(image)
     input_arr = np.array([input_arr])
     prediction = model.predict(input_arr)
-    return np.argmax(prediction)
+    return np.argmax(prediction), np.max(prediction)
 
 # ==============================
 # LANGUAGE CONFIGURATION
@@ -145,7 +145,7 @@ This dataset contains plant disease images with three main folders:
 - Վավերացում (17,572 նկար)
 - Փորձարկում (33 նկար)""",
 
-        # Armenian class names (COMPLETE TRANSLATIONS)
+        # Armenian class names
         'class_names': [
             'Խնձոր - Խնձորի խառնարան',
             'Խնձոր - Սև փտում',
@@ -194,21 +194,13 @@ This dataset contains plant disease images with three main folders:
 # ==============================
 if 'lang' not in st.session_state:
     st.session_state.lang = 'en'
-if 'uploaded_image' not in st.session_state:  # Add this line
+if 'uploaded_image' not in st.session_state:
     st.session_state.uploaded_image = None
+if 'prediction_confidence' not in st.session_state:
+    st.session_state.prediction_confidence = None
+
 # Load current language
 lang = LANGUAGES[st.session_state.lang]
-
-# ==============================
-# MODEL FUNCTION
-# ==============================
-def model_prediction(test_image):
-    model = tf.keras.models.load_model('trained_model.keras')
-    image = tf.keras.preprocessing.image.load_img(test_image, target_size=(128,128))
-    input_arr = tf.keras.preprocessing.image.img_to_array(image)
-    input_arr = np.array([input_arr])
-    prediction = model.predict(input_arr)
-    return np.argmax(prediction)
 
 # ==============================
 # SIDEBAR
@@ -224,24 +216,15 @@ app_mode = st.sidebar.selectbox(lang['page_select'], lang['pages'])
 # ==============================
 # PAGE CONTENT
 # ==============================
-# ==============================
-# PAGE CONTENT
-# ==============================
 if app_mode == lang['pages'][0]:  # Home
     st.header(lang['home_title'])
-    st.image('home_page.jpeg', use_container_width=True)
+    st.image('home_page.jpeg', use_column_width=True)
     st.markdown(lang['home_content'])
 
 elif app_mode == lang['pages'][1]:  # About
     st.header(lang['about_title'])
     st.markdown(lang['about_content'])
 
-# ==============================
-# PREDICTION PAGE (FIXED INDENTATION)
-# ==============================
-# ==============================
-# MODIFIED PREDICTION SECTION
-# ==============================
 elif app_mode == lang['pages'][2]:  # Prediction
     st.header(lang['prediction_title'])
     
@@ -265,12 +248,14 @@ elif app_mode == lang['pages'][2]:  # Prediction
             st.session_state.uploaded_image = None
             st.session_state.show_image = False
             st.session_state.prediction_result = None
+            st.session_state.prediction_confidence = None
         else:
             # Only reset if it's a new valid image
             if st.session_state.uploaded_image != validated_image:
                 st.session_state.uploaded_image = validated_image
                 st.session_state.show_image = False
                 st.session_state.prediction_result = None
+                st.session_state.prediction_confidence = None
 
     # Create permanent columns layout
     col1, col2 = st.columns(2)
@@ -295,17 +280,21 @@ elif app_mode == lang['pages'][2]:  # Prediction
         if st.button(lang['predict_btn'], 
                     disabled=st.session_state.uploaded_image is None,
                     help="Analyze the uploaded image"):
-            result_index = model_prediction(st.session_state.uploaded_image)
+            result_index, confidence = model_prediction(st.session_state.uploaded_image)
             st.session_state.prediction_result = lang['class_names'][result_index]
+            st.session_state.prediction_confidence = confidence
         
         # Persistent prediction display
-        if st.session_state.prediction_result:
-            st.success(f"{lang['prediction_result'].format(st.session_state.prediction_result)}")
-            st.session_state.show_image = True  # Ensure image stays visible
+        if st.session_state.prediction_result and st.session_state.prediction_confidence:
+            confidence_percent = st.session_state.prediction_confidence * 100
+            st.success(
+                f"{lang['prediction_result'].format(st.session_state.prediction_result)} "
+                f"({confidence_percent:.2f}% confidence)"
+            )
+            st.session_state.show_image = True
         elif st.session_state.uploaded_image and not st.session_state.prediction_result:
             st.info("Click 'Predict' to analyze the image")
 
     # Force show image if prediction exists
     if st.session_state.prediction_result and not st.session_state.show_image:
         st.session_state.show_image = True
-        st.experimental_rerun()
